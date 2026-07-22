@@ -1,0 +1,30 @@
+# Build and packaging output
+dist/
+build/
+out/
+coverage/
+artifacts/
+tmp/
+temp/
+
+# Dependency and cache directories
+node_modules/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs and local environment files
+*.log
+.env
+.env.*
+!.env.example
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor backups
+*~
