@@ -6,3 +6,4 @@ Open only the needed file.
 2. `../11_refactor_and_release.md`: refactor, UI state, release.
 3. `../12_records_and_milestones.md`: records policy.
 4. `../records/README.md`: write a note.
+5. `../14_skill_creation.md`: create or modify a reusable Codex Skill.

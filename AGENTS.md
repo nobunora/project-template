@@ -31,6 +31,7 @@ Keep context small and act from evidence.
 - Prefer `rg`, symbol search, and targeted ranges over full-file reads.
 - If behavior might change, say so explicitly.
 - If a change touches UI state, save flow, workflow orchestration, preview, progress, or entrypoint wiring, read the refactor and release rules before editing.
+- Before creating or modifying a reusable Codex Skill, read `docs/14_skill_creation.md`.
 - Do not parallelize checks that fight with the same watcher, browser, or dev server.
 - If a test or command cannot run, give the exact reason and the command a human should run.
 - Keep generated, cache, build, log, and artifact paths out of normal reads.
