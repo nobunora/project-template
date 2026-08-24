@@ -9,3 +9,5 @@ Open only the needed file.
 5. `../14_skill_creation.md`: create or modify a reusable Codex Skill.
 6. `../15_model_orchestration.md`: multi-model, delegated-agent, iterative review, or implementation orchestration.
 7. `../16_blind_review_protocol.md`: independent blind review and post-review reconciliation.
+8. `../17_repo_index_and_query.md`: local repository index/query environment and `repo_query` contract.
+9. `../19_local_agent_interfaces.md`: relationship between `repo_query`, `analyze`, `local_ai`, and `blind_review`.

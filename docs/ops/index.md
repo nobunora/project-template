@@ -9,3 +9,5 @@ Open only the needed file.
 5. `../08_report_template.md`: final report or milestone report.
 6. `../09_scripts.md`: command naming or release gate.
 7. `../16_blind_review_protocol.md`: independent blind review, adversarial checks, and reconciliation.
+8. `../18_static_analysis.md`: static-analysis environment, profiles, normalized findings, and `analyze` contract.
+9. `../19_local_agent_interfaces.md`: relationship between local analysis tooling and agent-facing interfaces.
