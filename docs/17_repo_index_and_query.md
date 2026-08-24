@@ -63,17 +63,18 @@ For long-lived environments, pin the LLVM major version used by CI or the projec
 
 ## Generated Data Location
 
-Keep generated indexes and query output out of normal repository reads.
+Keep project-owned indexes and query output out of normal repository reads.
 
-Recommended locations:
+Recommended project-owned locations:
 
 ```text
 .cache/repo-index/
-.cache/clangd/
 artifacts/repo-query/
 ```
 
-Do not commit these generated files. If the project places `compile_commands.json` in an ignored `build/` directory, leave it there rather than copying it into the repository root unless a tool requires otherwise.
+Let clangd own its background-index cache location. clangd normally stores project index shards under `.cache/clangd/index/` next to the discovered `compile_commands.json`; therefore a database in `build/` commonly results in cache data below `build/.cache/clangd/index/`.
+
+Do not commit generated indexes or query artifacts. If the project places `compile_commands.json` in an ignored `build/` directory, leave it there rather than copying it into the repository root unless a tool requires otherwise.
 
 ## Step 1 — Establish Fast Lexical Search
 
@@ -107,7 +108,7 @@ Create the cache directory and generate JSON when the installed ctags build supp
 
 ```bash
 mkdir -p .cache/repo-index
-ctags --output-format=json --fields=+nK --extras=+q -R src tests > .cache/repo-index/ctags.json
+ctags --output-format=json --fields=+nK -R src tests > .cache/repo-index/ctags.json
 ```
 
 Adapt indexed paths to the repository. Do not index dependencies, build output, generated artifacts, virtual environments, or vendored trees unless they are part of the task.
