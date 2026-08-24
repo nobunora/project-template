@@ -8,8 +8,7 @@ The goals are:
 - language-neutral symbol-definition lookup;
 - semantic C/C++ reference and call-hierarchy queries;
 - concise JSON output;
-- explicit distinction between lexical and semantic evidence;
-- no dependency on a model or external inference service.
+- explicit distinction between lexical and semantic evidence.
 
 The source tree remains authoritative. Indexes are acceleration data and may be rebuilt at any time.
 
@@ -357,7 +356,7 @@ A many-core machine with large RAM and fast SSD is suitable for hosting the work
 
 Keep all index internals on that host and expose only the CLI output to other development tooling.
 
-For the 24-core/48-thread class of machine described for this project, clangd background indexing and Ctags generation can run locally without requiring GPU resources.
+For a 24-core/48-thread class machine, clangd background indexing and Ctags generation can run locally without GPU resources.
 
 ## Validation
 
