@@ -6,7 +6,7 @@ See `docs/09_scripts.md` for the standard script contract and recommended run or
 
 ## Deterministic Repository Tools
 
-This template includes two Python 3 utilities with no model/API dependency:
+This template includes two deterministic Python 3 utilities:
 
 ```text
 repo_query.py  repository file/text/symbol/reference discovery
