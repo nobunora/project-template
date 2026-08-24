@@ -42,6 +42,5 @@ Use it as a copy-on-create base when you want a fast, disciplined starting point
 - milestone and development record format
 - model-independent multi-agent orchestration for specification, repository review, implementation, and adjudication
 - independent blind-review protocol with evidence-based reconciliation and convergence criteria
-- local repository indexing/query setup for targeted agent discovery
+- local repository indexing/query setup for targeted source discovery
 - deterministic static-analysis environment and normalized analysis gates
-- stable `repo_query`, `analyze`, `local_ai`, and `blind_review` interface separation
