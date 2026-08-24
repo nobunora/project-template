@@ -300,9 +300,11 @@ no new Critical/High findings
 
 Repositories with stricter requirements MAY require zero findings.
 
-## Changed-Line Filtering
+## Changed-Line and Changed-File Scoping
 
-Changed-line analysis is useful for fast feedback but is not proof that a patch cannot break unchanged code.
+Changed-line analysis is useful for review focus but is not proof that a patch cannot break unchanged code. With `clang-tidy-diff.py`, clang-tidy still analyzes the whole file and then filters diagnostics to changed lines, so changed-line filtering by itself should not be treated as a performance optimization.
+
+Changed-file or affected-translation-unit selection can reduce work when the wrapper invokes analyzers only for those files/TUs.
 
 A change can alter:
 
@@ -314,7 +316,7 @@ A change can alter:
 - ownership/lifetime assumptions;
 - header consumers.
 
-Use changed-line or changed-file scoping as a speed optimization, then expand to affected translation units or full analysis when risk requires it.
+Use changed-line filtering to focus reported diagnostics, changed-file/TU scoping to reduce work where safe, and expand to affected translation units or full analysis when risk requires it.
 
 ## Output and Artifact Policy
 
