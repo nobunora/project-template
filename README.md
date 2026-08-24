@@ -18,7 +18,11 @@ Use it as a copy-on-create base when you want a fast, disciplined starting point
 - `tests/` for focused tests
 - `scripts/` for automation
 - `docs/` for rules, templates, and project notes
+- `docs/specs/` for implementation-independent specification contracts
+- `docs/implementation/` for repository-review and implementation evidence
 - `docs/records/` for short milestone records when the project keeps development logs
+- `.codex/` for repository-agent review and implementation contracts
+- `.github/` for PR templates and deterministic workflow gates
 
 ## Standard Script Intent
 
@@ -44,3 +48,4 @@ Use it as a copy-on-create base when you want a fast, disciplined starting point
 - independent blind-review protocol with evidence-based reconciliation and convergence criteria
 - local repository indexing/query setup for targeted source discovery
 - deterministic static-analysis environment and normalized analysis gates
+- Chat/GitHub/Codex specification handoff with repository-validation and implementation contracts
