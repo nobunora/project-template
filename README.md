@@ -2,32 +2,161 @@
 
 [日本語版 / Japanese](README_JP.md)
 
-A language-neutral, evidence-driven starter for disciplined software development with humans, AI coding agents, and Codex-style repository agents.
+A language-neutral project template for building software that remains understandable, changeable, and reviewable as the codebase grows — whether the work is performed by humans, AI coding agents, or Codex-style repository agents.
 
-This repository is not only a folder layout. It defines a development control system: requirements are written as explicit contracts, repository reality is checked before implementation, deterministic tools are used for discovery and static analysis, changes are kept bounded, and important work can be reviewed independently before merge.
+This repository is more than a directory scaffold. It defines a development discipline for **understanding existing intent before changing code, preserving contracts, making the smallest justified change, expressing meaning through types and names, keeping responsibilities local, verifying behavior with evidence, and recording decisions so that future work does not have to reconstruct them from chat history or guesswork**.
 
-## Purpose
+The advanced AI/Codex workflow in this repository is built on top of those ordinary engineering rules. The goal is not to replace software design with agents; it is to make good engineering constraints explicit enough that humans and agents can follow the same rules.
 
-The template is designed to reduce common failure modes in both human and AI-assisted development:
+## What This Template Is Trying to Achieve
 
-- reading too much of a repository and losing the relevant context;
+The template is designed to reduce two related classes of failure.
+
+### Code-quality failures
+
+- changing code before understanding why the current code is shaped the way it is;
+- rewriting a wide area when a local change would solve the problem;
+- mixing feature work, refactoring, formatting, migration, and cleanup in one diff;
+- scattering one business rule across several modules, adapters, or entrypoints;
+- hiding domain meaning behind generic names such as `manager`, `helper`, `data`, or `process`;
+- passing broad dictionaries, framework objects, rows, or loosely typed values across boundaries instead of explicit semantic models;
+- using untyped or `any`-style escapes without a strong reason;
+- allowing public APIs, persisted fields, configuration keys, units, nullability, or failure behavior to drift accidentally;
+- accumulating boolean flags and implicit state until behavior becomes difficult to reason about;
+- creating speculative abstractions for hypothetical future needs;
+- swallowing errors, leaving temporary bypasses, or adding dependencies without a clear maintenance justification;
+- writing code that works today but makes the next change require a large refactor.
+
+### Human/AI workflow failures
+
+- reading too much of the repository and losing the relevant context;
 - guessing requirements, compatibility, security behavior, or external contracts;
-- starting implementation before checking whether the specification matches the real repository;
-- silently expanding scope or mixing features, refactors, formatting, and cleanup;
+- starting implementation before confirming that the specification matches repository reality;
 - treating passing tests as proof that the implementation matches the requirement;
-- letting an implementing agent review only its own assumptions;
-- spending expensive model capacity on repository traversal that deterministic tools can perform more cheaply;
-- losing requirements and decisions inside chat history instead of preserving them in GitHub.
+- letting the implementing agent validate only its own assumptions;
+- spending expensive model capacity on search and repetitive analysis that deterministic tools can perform;
+- leaving requirements, evidence, decisions, and risks only in chat history.
 
-The central rule is **evidence first, smallest necessary context, explicit contracts, bounded changes, and verifiable results**.
+The central rule is:
 
-## End-to-End Workflow
+> **Understand first. Preserve intent and contracts. Make the smallest coherent change. Express meaning explicitly. Verify with evidence.**
+
+## Core Engineering Philosophy
+
+### 1. Understand existing intent before editing
+
+Start from metadata and targeted search. Identify the responsible component, callers, consumers, state, tests, and contracts that materially affect the requested behavior.
+
+Do not assume that unfamiliar structure is accidental. Existing names, ordering, state transitions, compatibility wrappers, persistence formats, or error handling may encode real constraints.
+
+A change should fit the existing design unless the purpose of the task is explicitly to change that design.
+
+**Result:** fewer accidental regressions and less "rewrite because I did not understand it" behavior.
+
+### 2. Prefer the smallest change that solves the real problem
+
+Keep feature work, refactoring, formatting, migration, and unrelated cleanup separate whenever practical.
+
+A good diff should make it easy to answer:
+
+- what changed;
+- why it changed;
+- what intentionally did not change;
+- which behavior or contract is affected;
+- how the change was verified.
+
+For refactors, preserve or characterize current behavior first. Move structure without changing behavior, then change behavior separately when possible.
+
+**Result:** smaller review surfaces, safer rollback, clearer causality, and lower regression risk.
+
+### 3. Design so future changes stay local
+
+The architecture guidance aims to reduce the need for broad future refactoring. It does **not** claim that refactoring will never be necessary. Instead, it tries to make the expected change location predictable.
+
+The key rule is **one meaning, one owner**. A business rule, state transition, fallback order, calculation, validation policy, or presentation meaning should have one authoritative implementation.
+
+Components should have:
+
+- one narrow reason to change;
+- explicit ownership and non-ownership;
+- deliberate dependency direction;
+- small boundary contracts;
+- clear state ownership;
+- explicit failure behavior.
+
+Adapters translate external details; they should not become second owners of domain policy. Entrypoints coordinate work; they should not become alternate policy implementations. Compatibility layers should delegate to the current owner rather than preserve duplicate logic indefinitely.
+
+**Result:** new requirements usually change one obvious place instead of forcing a repository-wide redesign.
+
+### 4. Make types and contracts carry meaning
+
+Boundaries should communicate semantics, not merely transport data.
+
+Where the language allows it, prefer explicit typed models over broad dictionaries, database rows, framework request objects, or generic payloads passed deep into the system. Important contracts should make clear:
+
+- semantic input and output types;
+- units and time basis;
+- nullability and missing-data behavior;
+- validation ownership;
+- error categories;
+- retryability and idempotency;
+- ordering requirements;
+- compatibility and version expectations.
+
+Avoid untyped/`any` escapes unless there is a strong reason. Public APIs, persistent fields, environment keys, protocol fields, and integration names are contracts and should not be renamed merely for style.
+
+This is the sense in which the template favors "fixed" or stable types: **the shape and meaning of data should be explicit and intentional rather than drifting implicitly between components**.
+
+**Result:** fewer invalid states, less ambiguity at module boundaries, better tooling, and easier human/agent reasoning.
+
+### 5. Write code whose intent is visible to humans
+
+Names should expose domain meaning, purpose, state, or units. Prefer specific nouns and explicit verbs that match the vocabulary already used by the project.
+
+Avoid generic names when they conceal responsibility, including `data`, `result`, `item`, `value`, `manager`, `service`, `helper`, `util`, `process`, `execute`, `handle`, and similar catch-all terms.
+
+Comments should explain **why**, constraints, invariants, hardware/protocol quirks, or non-obvious tradeoffs — not narrate obvious mechanics. If a block of code requires a long explanation just to say what it does, improve the boundary, name, or function first.
+
+**Result:** maintainers can infer where a future change belongs without rereading the entire repository.
+
+### 6. Keep state and failure behavior explicit
+
+Mutable state needs a clear owner. Define who may write it, who may read it, whether concurrent writers exist, how stale state is detected, and how partial updates are prevented.
+
+When many booleans begin to encode mutually dependent modes, prefer a state machine or discriminated union over "flag soup". Preserve explicit ordering when reset, initialization, cleanup, save, preview, progress, or workflow sequencing changes behavior.
+
+Do not hide failures as empty results or zero values unless that fallback is a deliberate domain rule. Do not broadly catch and discard exceptions. Fail fast on malformed or unexpected input before expensive work or side effects.
+
+**Result:** behavior remains reconstructable during debugging, review, and recovery.
+
+### 7. Add abstractions and dependencies only for verified reasons
+
+Add an abstraction when it removes real duplication, clarifies a real boundary, or matches an existing design. Do not create layers merely because they might be useful later.
+
+Add a dependency only when the need, maintenance cost, security implications, license, runtime/bundle impact, and testability are acceptable. Prefer existing project tools or the standard library first.
+
+**Result:** less architectural drift and less maintenance debt created in the name of hypothetical flexibility.
+
+### 8. Treat tests and static checks as evidence, not proof
+
+Tests should cover the relevant normal cases, errors, boundaries, empty/missing input, regression cases, compatibility, external failures, timeouts/retries, and permissions where applicable.
+
+Run the checks closest to the changed code first, then widen the scope according to risk. Do not claim a command ran if it did not. If a check cannot run, record the exact reason and the command that remains to be run.
+
+Green tests do not prove architecture quality or specification compliance. Behavior evidence and architecture evidence are separate concerns.
+
+**Result:** verification is honest, reproducible, and proportionate to the change.
+
+## End-to-End Development Flow
 
 ```text
 request / idea
     |
     v
-explicit specification
+understand repository intent and constraints
+    |
+    v
+explicit specification for non-trivial work
     |
     v
 specification contract gate
@@ -41,13 +170,13 @@ repository review (read-only)
 validated implementation contract
     |
     v
-bounded implementation
+small, bounded implementation
     |
     v
-deterministic checks + tests + static analysis
+focused checks -> broader tests/static analysis
     |
     v
-implementation review
+self-review + affected-path review
     |
     +---- high-risk work ----> independent blind review
     |
@@ -55,61 +184,51 @@ implementation review
 record evidence -> merge / release
 ```
 
-### 1. Start with small, targeted context
+### Repository reading discipline
 
-Read `AGENTS.md`, then `docs/00_index.md`. Use metadata, `rg`, symbol search, and focused line ranges before opening whole files.
+Read `AGENTS.md`, then `docs/00_index.md`. Use `git status`, shallow listings, `rg`, symbol search, and focused line ranges before whole-file or repository-wide reads.
 
-This keeps repository context small and reduces both human search cost and LLM/Codex token consumption.
+The indexes under `docs/core/`, `docs/ops/`, and `docs/dev/` are intentionally designed so that an agent or developer opens only the guidance relevant to the current task.
 
-### 2. Turn requirements into a specification contract
+### Specification before implementation
 
-For non-trivial work, put the implementation-independent requirement under `docs/specs/` and define at least:
+For non-trivial work, use `docs/specs/SPEC_TEMPLATE.md` to define:
 
 - Goal;
 - Scope;
 - Non-goals;
 - Requirements / Invariants;
-- affected interfaces or contracts;
+- Affected Interfaces / Contracts;
 - Acceptance Criteria;
 - Validation;
-- risks and rollback considerations when relevant.
+- Risks / Rollback;
+- Open Questions.
 
-GitHub becomes the durable contract layer instead of chat history.
+A specification states what must be true. It must not claim compatibility with the repository until repository review validates that claim.
 
-### 3. Gate specifications before repository execution
+### Deterministic specification gate
 
-When a specification PR is ready for repository validation, apply the `codex-ready` label.
+When a specification PR is ready for repository review, it may receive the `codex-ready` label. `.github/workflows/spec-ready-gate.yml` checks that a specification changed and that required contract sections exist. The gate does not invoke a model.
 
-`.github/workflows/spec-ready-gate.yml` deterministically checks that the PR changes a specification and contains the required contract sections. The gate intentionally does not invoke a model.
+### Read-only repository review before implementation
 
-### 4. Review the real repository before implementation
+`.codex/repository-review.md` requires the repository agent to inspect affected source, interfaces, execution paths, tests, configuration, persistence/protocol boundaries, and build paths before changing production code.
 
-Use `.codex/repository-review.md` for the first repository-agent pass.
-
-The agent inspects actual source, interfaces, execution paths, tests, configuration, persistence/protocol boundaries, and build paths, but **does not modify production code**. The result must be one of:
+The disposition must be:
 
 - `validated`;
 - `spec-change-required`;
 - `blocked`.
 
-A specification conflict is returned for adjudication instead of being silently reinterpreted by the implementation agent.
+Repository review must not silently rewrite product requirements.
 
-### 5. Implement only the validated contract
+### Bounded implementation after validation
 
-Use `.codex/implementation.md` after repository review is `validated`.
+`.codex/implementation.md` requires the implementing agent to confirm repository assumptions, derive the smallest reviewable plan, preserve unrelated behavior and contracts, run focused checks first, broaden verification according to risk, and stop when an unapproved contract change or material specification conflict appears.
 
-Implementation is expected to:
+## Deterministic Repository Discovery
 
-- make the smallest reviewable change;
-- preserve unrelated behavior and public contracts;
-- run focused checks first;
-- run broader checks according to risk;
-- stop if repository reality materially contradicts the approved specification;
-- record exact evidence and residual risk.
-
-### 6. Use deterministic repository discovery
-
-`scripts/repo_query.py` provides a stable JSON-oriented query facade.
+`scripts/repo_query.py` provides a stable JSON-oriented discovery layer.
 
 ```bash
 python3 scripts/repo_query.py doctor
@@ -126,17 +245,17 @@ python3 scripts/repo_query.py changed
 
 It uses:
 
-- Git and ripgrep for cheap lexical discovery;
-- Universal Ctags for language-neutral symbol definitions;
+- Git and ripgrep for inexpensive lexical discovery;
+- Universal Ctags for language-neutral definition lookup;
 - clangd plus `compile_commands.json` for semantic C/C++ references and call hierarchy.
 
-Lexical and semantic evidence are explicitly distinguished. The tool returns locations and short matching lines rather than dumping whole source files.
+Lexical and semantic evidence are labeled separately. Failed semantic operations do not silently become lexical guesses. Results return locations and short matching lines rather than whole-file dumps.
 
-**Benefit:** repository traversal becomes cheaper, more reproducible, and easier to feed into AI agents without consuming unnecessary context.
+**Benefit:** source discovery is cheaper, reproducible, and compact enough to feed into a human or AI review without spending unnecessary context.
 
-### 7. Run deterministic static analysis
+## Deterministic Static Analysis
 
-`scripts/analyze.py` is the included C/C++ static-analysis wrapper around clang-tidy.
+`scripts/analyze.py` is the included C/C++ clang-tidy orchestration layer.
 
 ```bash
 python3 scripts/analyze.py doctor
@@ -146,83 +265,85 @@ python3 scripts/analyze.py deep
 python3 scripts/analyze.py file src/example.cpp
 ```
 
-Profiles intentionally separate cost and coverage:
+Profiles separate cost and coverage:
 
 - `fast` — changed C/C++ translation units;
 - `normal` — changed translation units, conservatively widening after header changes;
 - `deep` — every translation unit in `compile_commands.json`;
 - `file` — one explicit translation unit.
 
-Findings are normalized to JSON, raw analyzer logs are retained, optional baselines are explicit, and exit codes are suitable for automation.
+Diagnostics are normalized to JSON, raw clang-tidy logs are retained, baselines are explicit, and exit codes distinguish findings from environment/tool failures.
 
-For C/C++, both `repo_query.py` semantic operations and `analyze.py` share the same authoritative `compile_commands.json`, preventing separate tool configurations from drifting apart.
+For C/C++, `repo_query.py` and `analyze.py` share the same authoritative `compile_commands.json`. The build flags used for semantic discovery and static analysis therefore come from the same source of truth.
 
-### 8. Separate implementation from independent judgment
+## Multi-Agent and Independent Review
 
-`docs/15_model_orchestration.md` defines roles such as:
+`docs/15_model_orchestration.md` separates roles by responsibility:
 
-- Architect / Adjudicator;
-- Lead Repository Agent;
-- Delegated Investigator / Implementer;
-- Blind Reviewer.
+- **Architect / Adjudicator** — requirements, architecture, conflicts, final judgment;
+- **Lead Repository Agent** — real repository inspection, implementation, verification;
+- **Delegated Investigator / Implementer** — bounded search or mechanical/localized work;
+- **Blind Reviewer** — independent review without inheriting prior conclusions.
 
-Use stronger reasoning capacity for architecture, conflicts, adjudication, and final judgment. Use cheaper/faster agents or deterministic tools for bounded discovery and repetitive checks.
+Use strong reasoning where judgment materially affects correctness. Use cheaper/faster agents or deterministic tools for bounded traversal and repetitive checks.
 
-For high-risk changes, `docs/16_blind_review_protocol.md` requires an independent reviewer to reconstruct behavior from the specification and repository **without seeing the primary review's conclusions first**.
+For important work, `docs/16_blind_review_protocol.md` uses the rule **Discover first. Compare later.** A blind reviewer reconstructs required behavior and affected paths independently, then primary and blind findings are reconciled afterward.
 
-**Benefit:** this reduces correlated mistakes, confirmation bias, and self-review blind spots.
+**Benefit:** less confirmation bias, fewer correlated model errors, and stronger evidence for high-risk changes.
 
-### 9. Preserve evidence
+## Complete `docs/` Document Map
 
-Use `docs/08_report_template.md`, `docs/implementation/`, and `docs/records/` to capture:
+The repository intentionally says not to read all of these for every task. This table is an overview so a developer or agent can choose the right document.
 
-- changed files and reasons;
-- commands executed;
-- results;
-- validation gaps;
-- human confirmation points;
-- remaining risks;
-- milestone state and next action.
-
-A command that did not run must never be reported as successful.
-
-## What the Repository Contains
-
-| Area | Purpose | Main benefit |
+| Document | What it defines | Why it matters |
 | --- | --- | --- |
-| `AGENTS.md` | First-read rules for evidence-first repository work | Smaller context, fewer unsupported assumptions |
-| `docs/01`–`07` | Principles, boundaries, naming, testing, safety, review, bad patterns | Consistent engineering discipline |
-| `docs/08`–`12` | Reports, script contracts, development flow, release/refactor rules, records | Reproducible execution and audit trail |
-| `docs/13_architecture_quality.md` | Ownership, dependency direction, failure containment, architecture tests | Predictable change locality and maintainability |
-| `docs/14_skill_creation.md` | Rules for reusable Codex Skills | Safer, reusable agent automation |
-| `docs/15_model_orchestration.md` | Multi-role/model workflow and cost discipline | Better separation of judgment and repetitive work |
-| `docs/16_blind_review_protocol.md` | Independent review from first principles | Reduced confirmation bias |
-| `docs/17_repo_index_and_query.md` | Local repository index/query environment | Fast targeted source discovery |
-| `docs/18_static_analysis.md` | Deterministic clang-tidy environment | Repeatable diagnostics and automation gates |
-| `docs/19_chat_github_codex_workflow.md` | Chat -> GitHub -> Codex contract handoff | Durable specs and controlled repository execution |
-| `.codex/` | Repository-review and implementation contracts | Prevents implementation from silently changing requirements |
-| `.github/` | PR templates and deterministic specification gate | Enforces contract readiness before automation |
-| `scripts/` | Deterministic repository query and analysis tools | Offloads search/check work from LLMs |
+| `docs/00_index.md` | Entry index into core, operations, development, and records guidance | Keeps context small; prevents indiscriminate reading |
+| `docs/01_principles.md` | Evidence-first work, minimal change, contract discipline, comment discipline | Establishes the default behavior for every change |
+| `docs/02_design_and_boundaries.md` | Responsibility separation, thin entrypoints, dependency direction, abstraction rules | Keeps policy in the correct layer and future changes local |
+| `docs/03_naming.md` | Domain-specific naming and stability of public/integration names | Makes intent readable and prevents cosmetic contract breakage |
+| `docs/04_testing.md` | What to test, focused-to-broad execution order, fixture and reporting rules | Creates honest, risk-based verification |
+| `docs/05_safety_and_pokayoke.md` | Hard-coding, validation, secrets, exception handling, security, dependency policy | Prevents common unsafe shortcuts and hidden failure paths |
+| `docs/06_code_review.md` | Pre/post implementation review, behavior impact, independent review, convergence | Makes review cover scope, behavior, architecture, and remaining uncertainty |
+| `docs/07_bad_patterns.md` | Duplicate logic, hidden intent, `any`/untyped escapes, superficial fixes, noisy diffs | Provides a compact reject-list for maintainability hazards |
+| `docs/08_report_template.md` | Standard change/design/test/risk report | Makes work auditable and handoff-friendly |
+| `docs/09_scripts.md` | Stable script intent names and serial verification/release behavior | Gives projects a predictable automation contract |
+| `docs/10_development_playbook.md` | Work intake, scope control, refactor/implementation/verification/collaboration flow | Turns the principles into an execution order |
+| `docs/11_refactor_and_release.md` | Refactor guardrails, stateful UI behavior, release gates, commit rules | Prevents behavioral drift during structural work and release |
+| `docs/12_records_and_milestones.md` | When and how to keep milestone, blocker, refactor, and release records | Preserves concise project history and unresolved state |
+| `docs/13_architecture_quality.md` | One meaning/one owner, typed boundary contracts, dependency direction, state ownership, change locality, failure containment, observability, compatibility, architecture tests | Main long-form architecture guide for avoiding distributed ownership and large future refactors |
+| `docs/14_skill_creation.md` | Contract, structure, validation, evaluation, and safety for reusable Codex Skills | Keeps reusable automation bounded, testable, and unsurprising |
+| `docs/15_model_orchestration.md` | Role separation, delegation, context separation, model tiers, convergence and escalation | Uses expensive reasoning only where judgment is needed and reduces correlated mistakes |
+| `docs/16_blind_review_protocol.md` | Independent first-principles review, adversarial checks, evidence requirements, reconciliation | Prevents primary-review conclusions from biasing the independent reviewer |
+| `docs/17_repo_index_and_query.md` | Git/ripgrep/Ctags/clangd indexing and the `repo_query.py` contract | Provides deterministic, targeted source discovery |
+| `docs/18_static_analysis.md` | clang-tidy environment, fast/normal/deep scopes, normalized findings, baselines, exit policies | Provides reproducible C/C++ static-analysis gates |
+| `docs/19_chat_github_codex_workflow.md` | Specification -> GitHub -> repository review -> Codex implementation -> verification flow | Separates requirements/adjudication from repository execution and preserves the contract in GitHub |
+| `docs/core/index.md` | Index for principles, design/boundaries, and naming | Opens only the core rule needed by the current task |
+| `docs/ops/index.md` | Index for testing, safety, review, bad patterns, reports, scripts, blind review, static analysis | Routes operational/quality work without loading unrelated guidance |
+| `docs/dev/index.md` | Index for workflow, refactor/release, records, skills, orchestration, indexing, and Chat/GitHub/Codex flow | Routes development-process work to the relevant detailed guide |
+| `docs/specs/README.md` | Policy for implementation-independent specifications | Makes specifications the durable requirements contract rather than a claim about repository reality |
+| `docs/specs/SPEC_TEMPLATE.md` | Required structure for goal, scope, invariants, interfaces, acceptance, validation, risks, questions | Prevents ambiguous specifications from reaching implementation |
+| `docs/implementation/README.md` | Policy for repository-review and implementation execution records | Prevents execution notes from becoming a second, silently divergent requirements source |
+| `docs/implementation/TASK_TEMPLATE.md` | Repository evidence, approved implementation scope, verification plan/result, risks | Connects a specific specification revision to actual repository evidence and implementation work |
+| `docs/records/README.md` | Short chronological milestone/refactor/release/blocker notes | Keeps useful history visible without turning logs into another specification system |
 
-## Core Engineering Rules
+## Supporting Files Outside `docs/`
 
-Across the documents, the template consistently enforces these rules:
-
-- one business meaning should have one authoritative owner;
-- components should have narrow responsibilities and explicit boundaries;
-- dependencies should flow deliberately toward domain policy;
-- public APIs, persisted fields, environment keys, and integration fields are contracts;
-- unknown behavior must be verified rather than guessed;
-- feature work, refactoring, formatting, and migration should not be mixed without reason;
-- tests should cover normal, error, boundary, regression, compatibility, and external-failure paths as applicable;
-- risky input should be validated before expensive work or side effects;
-- broad exception swallowing, hidden bypasses, debug code, and unjustified dependencies are prohibited;
-- passing tests are evidence, not proof of specification compliance;
-- a review with no findings must still describe what was inspected and what remains unverified.
+| Area | Purpose |
+| --- | --- |
+| `AGENTS.md` | First-read repository rules: search before reading, evidence before assumptions, small diffs, stable contracts, focused verification |
+| `.codex/repository-review.md` | Read-only repository-review contract before implementation |
+| `.codex/implementation.md` | Implementation contract after repository validation |
+| `.codex/README.md` | Entry point for repository-agent contracts |
+| `.github/PULL_REQUEST_TEMPLATE/spec.md` | Specification-oriented PR structure |
+| `.github/PULL_REQUEST_TEMPLATE/implementation.md` | Implementation-oriented PR evidence structure |
+| `.github/workflows/spec-ready-gate.yml` | Deterministic validation of `codex-ready` specification PRs |
+| `scripts/README.md` | Entry point for deterministic repository query and static-analysis utilities |
+| `scripts/repo_query.py` | Repository file/text/symbol/reference/call discovery |
+| `scripts/analyze.py` | C/C++ clang-tidy orchestration and normalized analysis results |
 
 ## Standard Script Contract
 
-Projects based on this template can map their native tooling to these stable intents:
+Projects based on this template can map their native tooling to stable intents:
 
 | Script | Intent |
 | --- | --- |
@@ -234,44 +355,35 @@ Projects based on this template can map their native tooling to these stable int
 | `refactor:check` | Serial refactor gate |
 | `release:check` | Serial release/preflight gate |
 
-These are contract names, not a requirement that every language ecosystem use the same implementation.
+These are stable intent names, not a requirement that every ecosystem use the same implementation.
+
+## Practical Benefits
+
+Used consistently, the template is intended to produce these outcomes:
+
+- **Fewer large refactors:** one-owner rules, narrow responsibilities, explicit boundaries, and predictable change locality reduce structural debt before it spreads.
+- **More readable code:** domain-specific names, meaningful types, explicit state, and comments about reasons make intent visible to a future maintainer.
+- **Safer type and contract evolution:** semantic types, units, nullability, public names, persistence formats, and external interfaces are treated as deliberate contracts rather than incidental implementation details.
+- **Smaller, safer changes:** existing behavior and design intent are inspected first, then the smallest coherent diff is preferred.
+- **Lower context and token cost:** targeted search and concise deterministic evidence replace indiscriminate repository reads.
+- **Less specification drift:** requirements live in GitHub specifications, and implementation stops on material conflicts instead of silently improvising.
+- **More reproducible engineering:** query, static analysis, tests, and gates can be rerun and audited.
+- **Better AI cost allocation:** strong reasoning is reserved for architecture and adjudication; repetitive discovery/checking can be offloaded.
+- **Higher review quality:** review includes affected execution paths and can add a genuinely independent blind pass for high-risk work.
+- **Safer refactors and releases:** behavior is protected before structural changes, and verification widens according to risk.
+- **Better handoff and auditability:** specifications, implementation records, commands, results, decisions, and residual risks survive beyond one session or one developer.
 
 ## Quick Start
 
-1. Copy this repository as the base for a new project.
+1. Use this repository as the base for a new project.
 2. Read `AGENTS.md`.
-3. Read `docs/00_index.md` and only the category relevant to the task.
-4. Bind the standard script intents to the project's actual toolchain.
-5. For repository discovery, install the dependencies described in `docs/17_repo_index_and_query.md` and run:
+3. Read `docs/00_index.md`, then only the category/document relevant to the task.
+4. Before modifying existing code, identify the current owner, callers/consumers, contracts, tests, state, and failure behavior that materially affect the requested change.
+5. Keep the implementation as small and local as the existing design permits.
+6. Bind the standard script intents to the project's native toolchain.
+7. For deterministic repository discovery, follow `docs/17_repo_index_and_query.md` and run `python3 scripts/repo_query.py doctor`.
+8. For C/C++ semantic queries or static analysis, generate an accurate `compile_commands.json` from the real build configuration.
+9. For non-trivial changes, create a specification under `docs/specs/` before implementation and use `docs/19_chat_github_codex_workflow.md`.
+10. Record exact verification evidence, unresolved questions, human confirmation points, and remaining risks before merge/release.
 
-   ```bash
-   python3 scripts/repo_query.py doctor
-   ```
-
-6. For C/C++ semantic queries or static analysis, generate an accurate `compile_commands.json` from the real build configuration.
-7. For non-trivial changes, create a specification before implementation and use the Chat -> GitHub -> Codex flow in `docs/19_chat_github_codex_workflow.md`.
-8. Record commands, evidence, risks, and unresolved questions before merge or release.
-
-## Resulting Benefits
-
-Using the template consistently should provide the following practical benefits:
-
-- **Lower context and token cost:** targeted search and concise JSON evidence replace indiscriminate repository reads.
-- **Less specification drift:** requirements live in explicit GitHub contracts and implementation stops on material conflicts.
-- **More reproducible engineering:** deterministic query, analysis, tests, and gates produce evidence that can be rerun.
-- **Better AI cost allocation:** strong reasoning is reserved for architecture and adjudication while search and repetitive checks are offloaded.
-- **Higher review quality:** implementation review, affected-path inspection, and optional blind review reduce self-confirmation.
-- **Safer refactors and releases:** behavior is protected first, checks widen according to risk, and release gates remain explicit.
-- **Cleaner architecture:** one-owner rules, dependency direction, and explicit state/failure contracts make change impact more predictable.
-- **Better handoff and auditability:** specifications, implementation records, commands, results, and remaining risks survive beyond one chat session.
-
-## Recommended Reading Order
-
-1. `AGENTS.md`
-2. `docs/00_index.md`
-3. the relevant core/ops/dev document only
-4. `docs/19_chat_github_codex_workflow.md` for specification-to-implementation work
-5. `docs/17_repo_index_and_query.md` and `docs/18_static_analysis.md` when deterministic local analysis is needed
-6. `docs/15_model_orchestration.md` and `docs/16_blind_review_protocol.md` for complex or high-risk multi-agent work
-
-The source tree remains authoritative. Indexes, generated analysis data, agent summaries, and prior conclusions are supporting evidence and must not silently replace repository reality or the approved specification.
+The source tree and approved specification remain authoritative. Indexes, generated analysis data, execution records, AI summaries, and prior review conclusions are supporting evidence; none should silently replace repository reality or redefine the contract.
