@@ -10,8 +10,7 @@ The goals are:
 - normalize diagnostics into stable JSON;
 - retain raw analyzer output for audit/debugging;
 - distinguish current findings from an optional known baseline;
-- provide explicit exit codes for automation;
-- use no model or external inference service.
+- provide explicit exit codes for automation.
 
 ## Architecture
 
