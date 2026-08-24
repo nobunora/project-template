@@ -1,127 +1,192 @@
 # Repository Index and Query Environment
 
-Use this document when a repository is large enough that repeated source traversal by an AI agent is wasteful, or when semantic symbol/reference lookup should be delegated to the development machine.
+Use this document to build a deterministic local repository discovery layer.
 
-The goal is to make repository discovery cheap, deterministic where possible, and concise. The index is an acceleration layer; the source tree remains authoritative.
+The goals are:
+
+- cheap lexical file/text search;
+- language-neutral symbol-definition lookup;
+- semantic C/C++ reference and call-hierarchy queries;
+- concise JSON output;
+- explicit distinction between lexical and semantic evidence.
+
+The source tree remains authoritative. Indexes are acceleration data and may be rebuilt at any time.
 
 ## Architecture
-
-Prefer a layered index rather than one tool pretending to answer every question.
 
 ```text
 source tree
    |
-   +--> git / rg ------------------------> lexical file and text search
+   +--> Git / ripgrep --------------------> files and lexical text matches
    |
-   +--> Universal Ctags -----------------> language-neutral symbol definitions
+   +--> Universal Ctags -----------------> language-neutral definitions
    |
    +--> compile_commands.json
              |
-             +--> clangd background index -> C/C++ symbols, refs, relations
+             +--> clangd background index -> C/C++ semantic references/call hierarchy
              +--> clang-tidy               -> static analysis (see 18_static_analysis.md)
 
-repo_query = stable CLI facade over the available layers
+scripts/repo_query.py = stable deterministic CLI facade
 ```
 
-For C/C++, `compile_commands.json` is the key shared artifact. clangd uses it to parse translation units correctly and builds a cached background index. clang-tidy can consume the same compilation database.
+For C/C++, `compile_commands.json` is the shared build truth used by both clangd and clang-tidy. Do not maintain a second set of include paths, defines, target flags, or language settings for indexing.
 
-## Required Baseline
+## Required Packages
 
-Install the following on the machine that holds the working tree:
+On the machine that holds the working tree, install:
 
 - Git;
 - ripgrep (`rg`);
-- Python 3 for the wrapper implementation;
-- `jq` if shell-side JSON inspection is useful;
-- Universal Ctags for language-neutral symbol indexing.
+- Python 3;
+- Universal Ctags with JSON support.
 
-For C/C++ repositories also install:
+For semantic C/C++ queries also install:
 
 - a recent LLVM/Clang toolchain;
-- `clangd`;
-- `clang-tidy` if static analysis will also be enabled.
+- `clangd`.
 
-Package names vary by distribution. On Debian/Ubuntu-family systems a typical starting point is:
+For static analysis also install `clang-tidy`; see `18_static_analysis.md`.
+
+On Debian/Ubuntu-family systems a typical starting point is:
 
 ```bash
 sudo apt update
 sudo apt install git ripgrep python3 jq universal-ctags clangd clang-tidy
 ```
 
-Verify the actual binaries rather than assuming the package install succeeded:
+Package names vary by distribution. Prefer the LLVM major version used by project CI when reproducibility matters.
+
+Verify the binaries:
 
 ```bash
 git --version
 rg --version
 ctags --version
+ctags --list-features | grep json
 clangd --version
-clang-tidy --version
 python3 --version
 ```
 
-For long-lived environments, pin the LLVM major version used by CI or the project rather than silently changing analyzer/index behavior during an OS upgrade.
+`repo_query.py index` requires Universal Ctags with the `json` feature.
 
-## Generated Data Location
+## Generated Data
 
-Keep project-owned indexes and query output out of normal repository reads.
-
-Recommended project-owned locations:
+Project-owned generated data is stored under:
 
 ```text
 .cache/repo-index/
 artifacts/repo-query/
 ```
 
-Let clangd own its background-index cache location. clangd normally stores project index shards under `.cache/clangd/index/` next to the discovered `compile_commands.json`; therefore a database in `build/` commonly results in cache data below `build/.cache/clangd/index/`.
+The template ignores `.cache/`, `build/`, and `artifacts/`.
 
-Do not commit generated indexes or query artifacts. If the project places `compile_commands.json` in an ignored `build/` directory, leave it there rather than copying it into the repository root unless a tool requires otherwise.
+clangd manages its own background-index shards. Their exact location depends on where clangd discovers `compile_commands.json`; do not copy clangd's internal index into source-controlled paths.
 
-## Step 1 — Establish Fast Lexical Search
+## Step 1 — Verify the CLI
 
-Before semantic indexing, make sure the cheapest operations are reliable.
+From the repository root:
+
+```bash
+python3 scripts/repo_query.py doctor
+```
+
+The doctor command checks:
+
+- Git;
+- ripgrep;
+- Universal Ctags;
+- Ctags JSON support;
+- index directory writability;
+- optional clangd availability;
+- optional `compile_commands.json` availability.
+
+A missing clangd or compile database does not prevent lexical/Ctags queries. It only disables semantic C/C++ operations.
+
+## Step 2 — Establish Lexical Search
+
+The cheapest operations use ripgrep and Git directly.
 
 Examples:
 
 ```bash
-rg --files
-rg -n --hidden --glob '!build/**' --glob '!artifacts/**' 'TargetSymbol'
-git grep -n 'TargetSymbol'
+python3 scripts/repo_query.py files
+python3 scripts/repo_query.py files adc
+python3 scripts/repo_query.py text ADC_TIMEOUT
+python3 scripts/repo_query.py tests process_adc
+python3 scripts/repo_query.py changed
 ```
 
-The wrapper SHOULD prefer lexical search for:
+`files` and `text` are lexical operations. Their JSON output reports:
+
+```json
+{
+  "backend": "ripgrep",
+  "semantic": false
+}
+```
+
+Use lexical search for:
 
 - filenames;
 - literals;
 - configuration keys;
 - error messages;
 - comments;
-- generated-code markers;
-- exact symbol-name discovery before a semantic query.
+- exact symbol-name discovery;
+- test-name discovery.
 
-Do not launch an LSP server merely to answer a query that `rg` can answer precisely.
+Generated/cache/build paths are excluded from normal text search.
 
-## Step 2 — Build a Language-Neutral Symbol Index
+## Step 3 — Build the Ctags Definition Index
 
-Universal Ctags is the baseline symbol-definition index.
-
-Create the cache directory and generate JSON when the installed ctags build supports JSON output:
+Build or refresh the language-neutral definition index:
 
 ```bash
-mkdir -p .cache/repo-index
-ctags --output-format=json --fields=+nK -R src tests > .cache/repo-index/ctags.json
+python3 scripts/repo_query.py index
 ```
 
-Adapt indexed paths to the repository. Do not index dependencies, build output, generated artifacts, virtual environments, or vendored trees unless they are part of the task.
+By default the command indexes existing paths among:
 
-If JSON output is unavailable, use the normal tags format and make the wrapper report that limitation. Do not silently parse a different format as JSON.
+```text
+src/
+include/
+tests/
+```
 
-Universal Ctags is useful for definitions across many languages, but it is not sufficient evidence for semantic callers/callees in C/C++. Use the clangd layer for those operations.
+To specify paths explicitly:
 
-## Step 3 — Generate `compile_commands.json` for C/C++
+```bash
+python3 scripts/repo_query.py index src include platform tests
+```
 
-clangd and clang-tidy need the real compilation flags to understand includes, defines, language mode, target flags, and generated headers.
+Output is stored at:
 
-For CMake projects:
+```text
+.cache/repo-index/ctags.json
+```
+
+Query an exact symbol name:
+
+```bash
+python3 scripts/repo_query.py symbol process_adc
+```
+
+Ctags output is deterministic symbol-definition metadata, but it is not a semantic caller/reference engine. The result therefore remains labeled:
+
+```json
+{
+  "backend": "universal-ctags",
+  "semantic": false
+}
+```
+
+Refresh the Ctags index after material source changes, branch changes, or large refactors.
+
+## Step 4 — Generate `compile_commands.json` for C/C++
+
+Semantic C/C++ queries require the actual compile flags.
+
+For CMake:
 
 ```bash
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -133,169 +198,188 @@ Expected result:
 build/compile_commands.json
 ```
 
-clangd normally searches parent directories and common `build/` subdirectories for this file. If the project uses an unusual layout, configure the compilation-database location explicitly instead of copying stale databases between directories.
-
-For non-CMake projects, use the build system's native compilation-database support or a capture tool such as Bear where appropriate. The generated database MUST represent the same compile flags used by the actual build.
-
-Sanity-check the database:
+Validate it:
 
 ```bash
 python3 -c "import json; p='build/compile_commands.json'; d=json.load(open(p)); print(len(d)); print(d[0]['file'] if d else 'EMPTY')"
 ```
 
-A syntactically valid but stale compilation database is worse than a missing one because it can make semantic results look authoritative while using the wrong build configuration.
+The compilation database must match the real build configuration, including:
 
-## Step 4 — Warm the clangd Background Index
+- include paths;
+- preprocessor definitions;
+- generated headers;
+- language standard;
+- target architecture;
+- compiler/toolchain settings.
 
-clangd's background index parses translation units from the compilation database and caches index shards on disk. It provides whole-project symbol, reference, and relation data used by semantic language-server operations.
+For non-CMake projects, use the build system's native compilation-database support or an appropriate capture tool such as Bear.
 
-The simplest operational model is:
+Do not keep a stale copied `compile_commands.json` at repository root. `repo_query.py` searches common build locations and accepts an explicit location when necessary:
 
-1. ensure `compile_commands.json` exists;
-2. start clangd through an editor, a small LSP client, or the `repo_query` service;
-3. allow background indexing to complete;
-4. reuse the cache on subsequent starts.
-
-For the normal background-index path, do not invent a separate database format. Let clangd own its index cache.
-
-For very large repositories or a dedicated analysis server, a static index produced by `clangd-indexer` or a remote clangd index server MAY be introduced later. Start with the background index unless measurements show that startup/indexing cost is material.
-
-## Step 5 — Implement the `repo_query` Facade
-
-`repo_query` is a project-defined CLI contract, not an LLVM binary. Its purpose is to hide tool-specific details from Codex or another lead agent.
-
-Recommended commands:
-
-```text
-repo_query files <pattern>
-repo_query text <pattern>
-repo_query symbol <name>
-repo_query refs <name-or-location>
-repo_query callers <name-or-location>
-repo_query callees <name-or-location>
-repo_query related <name-or-location>
-repo_query tests <name-or-path>
-repo_query changed
-repo_query doctor
+```bash
+python3 scripts/repo_query.py --compile-db build-alt refs process_adc
 ```
 
-Suggested backend routing:
+## Step 5 — Warm the clangd Index
 
-| Command | Preferred backend | Fallback |
-| --- | --- | --- |
-| `files` | `rg --files` | Git file list |
-| `text` | `rg` | `git grep` |
-| `symbol` | clangd for supported semantic languages | Ctags |
-| `refs` | clangd/LSP semantic references | clearly labeled lexical `rg` |
-| `callers` | language-server/AST call hierarchy when supported | none; report unsupported |
-| `callees` | language-server/AST call hierarchy when supported | none; report unsupported |
-| `related` | clangd relations/type hierarchy where supported | Ctags/lexical hints |
-| `tests` | repository-specific test discovery plus `rg` | `rg` |
-| `changed` | Git | none |
+clangd builds its background index from the compilation database.
 
-Never present a lexical text match as a semantic reference without labeling it as lexical.
+Normal setup:
 
-## Output Contract
+1. generate a current `compile_commands.json`;
+2. run a semantic query or start clangd through the normal editor/tooling;
+3. allow background indexing to complete;
+4. reuse clangd's cached shards on later runs.
 
-Default to concise machine-readable output. JSON is preferred for agent consumption.
+For large repositories, first measure whether normal background indexing is actually a bottleneck. Only then consider `clangd-indexer` or a dedicated remote index server.
 
-Example:
+## Step 6 — Run Semantic C/C++ Queries
+
+`refs`, `callers`, and `callees` use clangd's LSP interface.
+
+Examples:
+
+```bash
+python3 scripts/repo_query.py refs process_adc
+python3 scripts/repo_query.py callers process_adc
+python3 scripts/repo_query.py callees control_loop
+```
+
+A target may also be an explicit source location:
+
+```bash
+python3 scripts/repo_query.py refs src/adc.cpp:214:5
+```
+
+For a symbol-name target, the CLI uses the Ctags index to locate the definition and then asks clangd for semantic information. Therefore run `index` before symbol-name semantic queries.
+
+Successful semantic output is explicitly labeled:
 
 ```json
 {
-  "query": "process_adc",
-  "mode": "symbol",
   "backend": "clangd",
-  "semantic": true,
-  "definitions": [
-    {"path": "src/adc.c", "line": 214, "column": 5}
-  ],
-  "references": [
-    {"path": "src/main.c", "line": 393, "column": 9}
-  ],
-  "truncated": false
+  "semantic": true
 }
 ```
 
-Every result SHOULD identify:
+The CLI does not silently fall back from a failed semantic operation to lexical text matching.
 
-- backend used;
-- whether the result is semantic or lexical;
-- path and focused location;
-- whether output was truncated;
-- index freshness when known.
+Call-hierarchy support depends on the installed clangd version. If an operation is unsupported, the command fails explicitly rather than fabricating a lexical equivalent.
 
-Do not return entire files by default. Return locations and short evidence so the lead agent can open only the relevant ranges.
+## CLI Contract
 
-## Freshness and Invalidations
+Implemented commands:
 
-The query layer SHOULD detect or expose stale state.
+```text
+python3 scripts/repo_query.py doctor
+python3 scripts/repo_query.py index [paths...]
+python3 scripts/repo_query.py files [pattern]
+python3 scripts/repo_query.py text <pattern>
+python3 scripts/repo_query.py symbol <name>
+python3 scripts/repo_query.py refs <symbol|path:line[:column]>
+python3 scripts/repo_query.py callers <symbol|path:line[:column]>
+python3 scripts/repo_query.py callees <symbol|path:line[:column]>
+python3 scripts/repo_query.py tests <pattern>
+python3 scripts/repo_query.py changed
+```
 
-Rebuild or refresh when:
+Common options:
+
+```text
+--compile-db <path-or-directory>
+--index <ctags-json-path>
+--compact
+```
+
+## Output Rules
+
+The default output is JSON.
+
+Every discovery result identifies the backend and whether the result is semantic.
+
+Example lexical result:
+
+```json
+{
+  "mode": "text",
+  "query": "ADC_TIMEOUT",
+  "backend": "ripgrep",
+  "semantic": false,
+  "matches": [
+    {"path": "src/adc.cpp", "line": 40, "column": 9, "text": "..."}
+  ]
+}
+```
+
+Example semantic result:
+
+```json
+{
+  "mode": "refs",
+  "query": "process_adc",
+  "backend": "clangd",
+  "semantic": true,
+  "origin": {"path": "src/adc.cpp", "line": 214, "column": 5},
+  "references": [
+    {"path": "src/main.cpp", "line": 393, "column": 9}
+  ]
+}
+```
+
+The query layer returns locations and short matching lines, not whole-file contents.
+
+## Freshness Rules
+
+Refresh or revalidate when:
 
 - the active branch changes materially;
+- source files are added/removed/renamed;
+- large refactors move symbols;
 - build flags or toolchain settings change;
 - `compile_commands.json` changes;
 - generated headers change;
-- large refactors move symbols;
-- the index reports paths that no longer exist.
+- results point to files/lines that no longer exist.
 
-Ctags indexes SHOULD be regenerated explicitly after material source changes. clangd background-index shards are incrementally maintained by clangd, but the wrapper SHOULD still expose a health/freshness check.
+Recommended sequence after a material change:
 
-## `repo_query doctor`
-
-Provide a cheap diagnostic command before relying on semantic results.
-
-It SHOULD check at least:
-
-```text
-[ ] repository root resolved
-[ ] rg available
-[ ] git available
-[ ] ctags available and expected output format supported
-[ ] compile_commands.json present when C/C++ semantic queries are enabled
-[ ] clangd available
-[ ] compilation database parses
-[ ] representative source file exists in the compilation database
-[ ] index/cache directories writable
-[ ] generated/cache paths are ignored by Git
+```bash
+python3 scripts/repo_query.py index
+python3 scripts/repo_query.py doctor
 ```
 
-The doctor command should fail clearly when semantic queries are requested but only lexical fallback is available.
+clangd incrementally maintains its own background index when running.
 
-## Codex Usage Policy
+## Dedicated Analysis Machine
 
-Prefer this order:
+A many-core machine with large RAM and fast SSD is suitable for hosting the working tree, build directory, Ctags data, and clangd cache.
 
-1. `repo_query` to locate relevant files/symbols;
-2. read focused source ranges;
-3. reason from source and specifications;
-4. request broader repository traversal only when evidence requires it.
+Keep all index internals on that host and expose only the CLI output to other development tooling.
 
-`repo_query` is a discovery accelerator, not an authority. Final correctness claims MUST still be grounded in the current source, tests, specifications, and execution evidence.
+For a 24-core/48-thread class machine, clangd background indexing and Ctags generation can run locally without GPU resources.
 
-## Scaling to a Dedicated Analysis Machine
+## Validation
 
-A machine with many CPU cores, large RAM, fast SSD, and remote access is well suited to hosting the index.
+Run the deterministic helper tests:
 
-Recommended separation:
-
-```text
-Codex / lead agent
-       |
-       | concise query
-       v
-repo_query on analysis host
-       |
-       +-- rg / Git
-       +-- Ctags index
-       +-- clangd + compile database
-       |
-       v
-small JSON result with source locations
+```bash
+python3 -m unittest discover -s tests -p 'test_local_analysis_tools.py' -v
 ```
 
-Do not copy multi-gigabyte index internals into prompts. Keep the index server-side and return only query results.
+Then validate the actual project environment:
+
+```bash
+python3 scripts/repo_query.py doctor
+python3 scripts/repo_query.py index
+python3 scripts/repo_query.py symbol <known-symbol>
+```
+
+For C/C++ with a compilation database:
+
+```bash
+python3 scripts/repo_query.py refs <known-symbol>
+python3 scripts/repo_query.py callers <known-symbol>
+```
 
 ## References
 
@@ -303,4 +387,4 @@ Do not copy multi-gigabyte index internals into prompts. Keep the index server-s
 - clangd installation and compilation database setup: <https://clangd.llvm.org/installation>
 - clangd configuration: <https://clangd.llvm.org/config>
 - Universal Ctags documentation: <https://docs.ctags.io/en/latest/man/ctags.1.html>
-- See also `18_static_analysis.md` and `19_local_agent_interfaces.md`.
+- See also `18_static_analysis.md`.
