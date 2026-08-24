@@ -1,9 +1,3 @@
----
-name: Implementation
-title: "impl: "
-about: Implement a repository-validated specification
----
-
 ## Specification
 
 Path: `docs/specs/<spec>.md`
