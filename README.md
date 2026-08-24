@@ -40,3 +40,5 @@ Use it as a copy-on-create base when you want a fast, disciplined starting point
 - development playbook for phase-based work
 - refactor and release guardrails
 - milestone and development record format
+- model-independent multi-agent orchestration for specification, repository review, implementation, and adjudication
+- independent blind-review protocol with evidence-based reconciliation and convergence criteria

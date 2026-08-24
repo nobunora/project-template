@@ -35,6 +35,29 @@ If behavior changed, identify:
 - whether rollback is feasible
 - what requires human confirmation
 
+## Independent Review
+
+For non-trivial or high-risk changes, do not rely only on the implementing agent's self-review.
+
+Use `15_model_orchestration.md` when multiple review or implementation roles are involved.
+
+Use `16_blind_review_protocol.md` when an independent review must not inherit the primary review's conclusions or hypotheses.
+
+A review with no findings must still state what was inspected, which paths and invariants were checked, and what remains unverified.
+
+## Review Convergence
+
+Do not treat "no issues found" as sufficient evidence of convergence.
+
+For non-trivial changes, verify that:
+
+- no unresolved Critical or High finding remains;
+- confirmed findings have explicit dispositions;
+- specification and source agree;
+- relevant checks pass;
+- material validation gaps are resolved or explicitly accepted;
+- a fresh review does not reveal a new material defect requiring redesign.
+
 ## Final Report Review
 
 - Change summary
