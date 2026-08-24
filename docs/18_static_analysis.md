@@ -1,52 +1,64 @@
 # Static Analysis Environment
 
-Use this document when deterministic analyzers should handle mechanically detectable defects before expensive model review.
+Use this document to build a deterministic local static-analysis layer.
 
-The goal is not to maximize warning count. The goal is to produce reproducible, scoped evidence that a lead agent can act on without reading raw analyzer output indiscriminately.
+The goals are:
+
+- parse the same C/C++ program the compiler builds;
+- run clang-tidy in parallel;
+- separate fast, normal, and deep scopes;
+- normalize diagnostics into stable JSON;
+- retain raw analyzer output for audit/debugging;
+- distinguish current findings from an optional known baseline;
+- provide explicit exit codes for automation.
 
 ## Architecture
 
 ```text
 source tree
    |
-   +--> compile / language configuration
+   +--> compile_commands.json
    |        |
-   |        +--> compiler warnings
-   |        +--> clang-tidy / Clang Static Analyzer (C/C++)
-   |        +--> language-specific lint/type tools
+   |        +--> clang-tidy
+   |        +--> clangd (see 17_repo_index_and_query.md)
    |
-   +--> Git diff ---------------------> changed-file / changed-line scope
+   +--> Git diff ---------------------> changed-file selection
 
-analyze = stable CLI facade
+scripts/analyze.py
    |
    +--> fast
    +--> normal
    +--> deep
+   +--> file
+   +--> baseline
+   +--> doctor
    |
    v
-normalized findings + raw artifacts
+artifacts/analysis/<profile>/
+   +--> findings.json
+   +--> summary.json
+   +--> raw/*.log
 ```
 
-For C/C++, reuse the same `compile_commands.json` described in `17_repo_index_and_query.md`. Do not maintain separate compile flags for indexing and static analysis.
+For C/C++, `compile_commands.json` is the shared build truth for indexing and analysis. Do not maintain separate compile flags for clangd and clang-tidy.
 
-## Required Baseline
+## Required Packages
 
-The machine SHOULD have:
+Install:
 
 - the project's normal compiler/toolchain;
 - Git;
-- Python 3 or another small wrapper runtime;
-- the repository's existing lint/type/static tools;
-- for C/C++, `clang-tidy` and a valid compilation database.
+- Python 3;
+- `clang-tidy`.
 
-On Debian/Ubuntu-family systems, a typical C/C++ starting point is:
+On Debian/Ubuntu-family systems:
 
 ```bash
 sudo apt update
 sudo apt install clang clang-tidy clang-tools python3
 ```
 
-Package names and LLVM versions vary. Prefer the LLVM major version used by project CI when reproducibility matters.
+Prefer the LLVM major version used by project CI when reproducibility matters.
 
 Verify:
 
@@ -56,9 +68,9 @@ clang-tidy --version
 python3 --version
 ```
 
-## Step 1 — Make the Build Configuration Authoritative
+## Step 1 — Generate the Compilation Database
 
-Static analysis must parse the same program that the compiler builds.
+Static analysis must use the actual build flags.
 
 For CMake:
 
@@ -72,32 +84,29 @@ Expected:
 build/compile_commands.json
 ```
 
-Validate it before running analysis:
+Validate it:
 
 ```bash
 python3 -c "import json; p='build/compile_commands.json'; d=json.load(open(p)); print(len(d)); print(d[0]['file'] if d else 'EMPTY')"
 ```
 
-If compile flags, target defines, generated headers, SDK paths, or toolchain files change, regenerate the database before trusting analyzer results.
+Regenerate the database when any of these change:
 
-## Step 2 — Establish Project Policy
+- target defines;
+- include paths;
+- generated headers;
+- SDK/toolchain paths;
+- language standard;
+- compiler/toolchain file;
+- target architecture.
 
-Do not begin with every available check enabled. Define a small policy that separates correctness checks from style churn.
+A stale but syntactically valid database can produce misleading diagnostics.
 
-For C/C++, a reasonable starting set is project-dependent but commonly prioritizes:
+## Step 2 — Define `.clang-tidy`
 
-- `clang-analyzer-*`;
-- `bugprone-*`;
-- selected `performance-*`;
-- selected `portability-*`;
-- selected `concurrency-*` when concurrency exists;
-- project-required CERT or C++ Core Guidelines checks where applicable.
+Do not enable every check by default. Start with correctness-oriented groups and tune them for the project.
 
-Treat broad `modernize-*` and `readability-*` groups as opt-in unless the repository explicitly wants those diffs. Their warnings may be valid but can overwhelm correctness review.
-
-Store project configuration in `.clang-tidy` when C/C++ analysis is part of normal development.
-
-Example starting shape:
+A reasonable starting shape is:
 
 ```yaml
 Checks: >
@@ -111,290 +120,368 @@ HeaderFilterRegex: '^(src|include|tests)/'
 SystemHeaders: false
 ```
 
-Tune this for the repository. Do not copy a generic check set into safety-critical or embedded code without reviewing false positives, target assumptions, allocation rules, exceptions, RTTI, concurrency model, and compiler dialect.
+Common priorities:
 
-Check the configuration itself:
+- `clang-analyzer-*`;
+- `bugprone-*`;
+- selected `performance-*`;
+- selected `portability-*`;
+- selected `concurrency-*` when concurrency exists;
+- project-required CERT or Core Guidelines checks where applicable.
+
+Treat broad `modernize-*` and `readability-*` groups as opt-in unless the repository intentionally wants their warning volume and possible rewrite pressure.
+
+Embedded, safety-critical, exception-free, RTTI-free, allocation-restricted, or target-specific projects must review generic check assumptions before adopting them.
+
+Validate the configuration when supported by the installed version:
 
 ```bash
 clang-tidy --verify-config
 ```
 
-## Step 3 — Define Three Analysis Profiles
+## Step 3 — Verify the CLI
+
+Run:
+
+```bash
+python3 scripts/analyze.py doctor
+```
+
+The doctor command checks:
+
+- Git;
+- `clang-tidy`;
+- `compile_commands.json`;
+- presence of C/C++ translation units in the database;
+- optional `.clang-tidy` presence;
+- optional `.clang-tidy` configuration validation.
+
+A missing required analyzer or compilation database returns exit code `2`.
+
+## Step 4 — Analysis Profiles
 
 ### Fast
 
-Run after a local edit or before asking an AI reviewer to inspect the patch.
-
-Target:
-
-- changed source files or translation units;
-- compiler diagnostics already produced by the focused build;
-- cheap lint/type checks;
-- no whole-repository traversal unless the repository is small.
-
-Intent:
-
-```text
-seconds to low minutes
+```bash
+python3 scripts/analyze.py fast
 ```
+
+Scope:
+
+- changed C/C++ translation units only.
+
+Use this after a focused source edit.
+
+Changed headers are reported in selection metadata but do not automatically expand the fast profile. This keeps fast feedback bounded.
 
 ### Normal
 
-Run before commit/PR handoff for non-trivial changes.
-
-Target:
-
-- affected translation units;
-- standard static analyzer policy;
-- lint/type checks required by the project;
-- focused tests/build checks handled by their existing scripts.
-
-Intent:
-
-```text
-broad enough to catch cross-file effects without paying full-release cost
+```bash
+python3 scripts/analyze.py normal
 ```
+
+Scope:
+
+- changed C/C++ translation units;
+- if a tracked/untracked header changed, all translation units are analyzed conservatively.
+
+The broad header behavior is intentional. Without a separate dependency graph, determining every affected translation unit from a header change cannot be done reliably by filename alone.
 
 ### Deep
 
-Run for high-risk changes, release gates, or when a normal pass reveals systemic issues.
+```bash
+python3 scripts/analyze.py deep
+```
 
-Target:
+Scope:
 
-- all translation units;
-- deeper analyzer sets approved by the project;
-- full type/lint pass;
-- repository-specific security or architecture checks;
-- sanitizers or dynamic analyzers only if the existing build/test workflow supports them.
+- every C/C++ translation unit in `compile_commands.json`.
 
-Deep analysis is not automatically required for every edit.
+Use for:
 
-## Step 4 — Run clang-tidy in Parallel
+- release/preflight checks;
+- large refactors;
+- toolchain/configuration changes;
+- high-risk control-flow or ownership changes;
+- periodic full-repository validation.
 
-clang-tidy consumes a compilation database via `-p <build-path>` and supports project configuration through `.clang-tidy`.
-
-Single translation unit example:
+### File
 
 ```bash
-clang-tidy -p build src/example.cpp
+python3 scripts/analyze.py file src/example.cpp
 ```
 
-For whole-project or regex-scoped operation, use the `run-clang-tidy` helper installed with the LLVM extra tools where available. It is designed to run clang-tidy across the compilation database in parallel.
+The file must be an actual translation unit in the compilation database.
 
-Typical form:
+Headers are not analyzed directly because clang-tidy requires a compile command context. Use `normal` or `deep` when a header change must be evaluated.
+
+## Step 5 — Parallel Execution
+
+`analyze.py` invokes clang-tidy per selected translation unit using a Python thread pool.
+
+Default worker count:
+
+```text
+logical CPU count / 2
+```
+
+Therefore a 48-thread machine defaults to 24 concurrent clang-tidy processes.
+
+Override explicitly:
 
 ```bash
-run-clang-tidy -p build -j 24
+python3 scripts/analyze.py --jobs 24 deep
 ```
 
-Exact helper names differ across distributions, for example `run-clang-tidy`, `run-clang-tidy.py`, or a version-suffixed binary. The environment setup SHOULD resolve the installed path once and have the `analyze` wrapper call that stable resolved command.
+If memory pressure or SDK/toolchain I/O becomes a bottleneck, reduce the job count. If analysis is CPU-bound and memory remains comfortable, benchmark higher values rather than assuming more processes are always faster.
 
-Do not enable `--fix`/`-fix` in the default analysis path. Static analysis should report evidence first; the lead agent decides whether and how to change source.
+## Step 6 — Normalized Findings
 
-## Step 5 — Add Language-Specific Adapters
+clang-tidy text diagnostics are normalized to JSON.
 
-`analyze` should be language-neutral even though individual tools are not.
-
-Examples of adapters that MAY be enabled when the repository already uses them:
-
-| Ecosystem | Typical deterministic checks |
-| --- | --- |
-| C/C++ | compiler warnings, clang-tidy, Clang Static Analyzer, optional cppcheck |
-| Python | Ruff, mypy/pyright where configured |
-| TypeScript | `tsc --noEmit`, ESLint |
-| Rust | `cargo clippy`, compiler warnings |
-| Go | `go vet`, configured linters |
-
-Do not add every tool to every project. Prefer existing project tooling and add a dependency only when its signal justifies installation and maintenance cost.
-
-## Step 6 — Implement the `analyze` Facade
-
-`analyze` is a project-defined CLI contract, not one analyzer binary.
-
-Recommended commands:
-
-```text
-analyze fast
-analyze normal
-analyze deep
-analyze changed
-analyze file <path>
-analyze doctor
-analyze explain <finding-id>
-```
-
-Suggested behavior:
-
-```text
-analyze fast
-  -> determine changed/affected files
-  -> run cheap configured analyzers
-  -> normalize findings
-  -> print concise summary
-
-analyze normal
-  -> run normal policy over affected TUs/components
-  -> normalize findings
-  -> retain raw logs as artifacts
-
-analyze deep
-  -> run approved full-repository policy
-  -> normalize findings
-  -> retain raw logs and timing data
-```
-
-## Normalized Finding Contract
-
-Do not make Codex parse multiple megabytes of heterogeneous analyzer logs if a small structured result is sufficient.
-
-Recommended record:
+Example record:
 
 ```json
 {
-  "id": "clang-tidy:src/control.cpp:417:bugprone-use-after-move",
+  "id": "clang-tidy:bugprone-use-after-move:src/control.cpp:417:0123456789ab",
   "tool": "clang-tidy",
   "check": "bugprone-use-after-move",
-  "severity": "high",
+  "level": "warning",
+  "severity": "medium",
   "path": "src/control.cpp",
   "line": 417,
   "column": 9,
   "message": "object used after it was moved",
-  "new_in_diff": true,
-  "autofix_available": false
+  "baseline": false,
+  "new_in_analysis": true
 }
 ```
 
-The wrapper MAY add project-level severity mapping, but it MUST preserve the original tool/check identity. Do not convert every warning to High merely because the tool emitted it.
-
-Summary output SHOULD be compact:
-
-```json
-{
-  "profile": "normal",
-  "status": "fail",
-  "counts": {"critical": 0, "high": 2, "medium": 7, "low": 11},
-  "new_findings": 3,
-  "baseline_findings": 17,
-  "results": "artifacts/analysis/normal/findings.json",
-  "raw": "artifacts/analysis/normal/raw/"
-}
-```
-
-## Baselines and New Findings
-
-For mature repositories with existing warnings, distinguish:
-
-- findings introduced by the current change;
-- existing baseline findings;
-- findings whose scope cannot be determined.
-
-Do not hide old Critical/High defects merely because they are baseline. Instead, prevent baseline noise from making every unrelated patch impossible to review.
-
-A useful default gate is:
+The stable finding ID is derived from:
 
 ```text
-no new Critical/High findings
-+ no unexplained increase in lower-severity findings
-+ existing project-required static-analysis gate still passes
+tool + check + path + line + column + message
 ```
 
-Repositories with stricter requirements MAY require zero findings.
+The wrapper preserves the original check name and diagnostic level.
 
-## Changed-Line and Changed-File Scoping
+Default severity mapping is intentionally simple:
 
-Changed-line analysis is useful for review focus but is not proof that a patch cannot break unchanged code. With `clang-tidy-diff.py`, clang-tidy still analyzes the whole file and then filters diagnostics to changed lines, so changed-line filtering by itself should not be treated as a performance optimization.
+```text
+clang-tidy error                      -> high
+security analyzer / CERT warning     -> high
+other warning                         -> medium
+note                                  -> low
+```
 
-Changed-file or affected-translation-unit selection can reduce work when the wrapper invokes analyzers only for those files/TUs.
+Project policy may later map severities differently, but it should not erase the original tool/check identity.
 
-A change can alter:
+## Step 7 — Artifacts
 
-- callers;
-- templates;
-- generated instantiations;
-- shared state;
-- compile-time configuration;
-- ownership/lifetime assumptions;
-- header consumers.
-
-Use changed-line filtering to focus reported diagnostics, changed-file/TU scoping to reduce work where safe, and expand to affected translation units or full analysis when risk requires it.
-
-## Output and Artifact Policy
-
-Recommended paths:
+Results are stored under:
 
 ```text
 artifacts/analysis/fast/
 artifacts/analysis/normal/
 artifacts/analysis/deep/
+artifacts/analysis/file/
 ```
 
-Store:
+Each profile contains:
 
-- normalized `findings.json`;
-- concise `summary.json`;
-- raw tool output for audit/debugging;
-- optional timing/profile output.
+```text
+findings.json
+summary.json
+raw/
+```
 
-Keep artifacts out of normal source scans and out of Git unless the project explicitly snapshots analysis evidence.
+`findings.json` contains normalized findings.
+
+`summary.json` contains:
+
+- status;
+- compilation database path;
+- worker count;
+- selected translation units;
+- changed files/headers;
+- severity counts;
+- new/baseline counts;
+- analyzer failures;
+- raw artifact paths.
+
+`raw/` preserves clang-tidy output per translation unit.
+
+Generated analysis output is ignored by Git through the existing `artifacts/` rule.
+
+## Step 8 — Failure Policy
+
+Default behavior fails when any non-baseline finding exists:
+
+```bash
+python3 scripts/analyze.py normal
+```
+
+Equivalent to:
+
+```bash
+python3 scripts/analyze.py --fail-on any normal
+```
+
+Available policies:
+
+```text
+--fail-on any    fail on any new finding
+--fail-on high   fail on new high/critical findings
+--fail-on error  fail only on clang-tidy error diagnostics
+--fail-on none   never fail because of findings
+```
+
+This controls the command exit status; findings are still written to artifacts.
+
+## Step 9 — Baselines
+
+For a repository that already contains known findings, create an explicit baseline rather than hiding them in parser logic.
+
+First run an analysis without a baseline and retain its `findings.json`:
+
+```bash
+python3 scripts/analyze.py --fail-on none deep
+```
+
+Create a baseline file:
+
+```bash
+python3 scripts/analyze.py baseline \
+  --from-findings artifacts/analysis/deep/findings.json \
+  --output .analysis-baseline.json
+```
+
+Then run against it:
+
+```bash
+python3 scripts/analyze.py --baseline .analysis-baseline.json normal
+```
+
+Existing matching finding IDs are marked:
+
+```json
+{
+  "baseline": true,
+  "new_in_analysis": false
+}
+```
+
+New findings remain visible and can fail the configured policy.
+
+A baseline is not a statement that old findings are acceptable. It is noise control. Critical/high legacy findings should still have an explicit disposition in the project workflow.
+
+Because finding IDs include line/column/message, large source movement can invalidate baseline matches. Regenerate deliberately; do not silently rewrite the baseline during normal analysis.
 
 ## Exit Codes
 
-Define stable exit behavior for automation.
-
-Recommended:
-
 ```text
-0 = analysis completed and policy passed
-1 = analysis completed and policy failed
-2 = environment/configuration error
-3 = analyzer crashed or produced invalid output
+0 = analysis completed and configured policy passed
+1 = analysis completed and configured policy failed
+2 = environment/configuration/input error
+3 = analyzer process failure without parseable diagnostics
+130 = interrupted
 ```
 
-Do not return success when the requested analyzer silently failed to start.
+A missing analyzer must never produce exit code `0`.
 
-## `analyze doctor`
+## Temporary Check Override
 
-It SHOULD verify at least:
+Normally configure checks in `.clang-tidy`.
 
-```text
-[ ] repository root resolved
-[ ] required analyzer binaries available
-[ ] versions recorded
-[ ] compile_commands.json valid when required
-[ ] .clang-tidy parses when present
-[ ] representative translation unit can be analyzed
-[ ] output/artifact paths writable
-[ ] baseline file valid when configured
-[ ] generated/artifact/cache paths ignored
+For diagnostics or experiments only:
+
+```bash
+python3 scripts/analyze.py --checks='-*,clang-analyzer-*,bugprone-*' file src/example.cpp
 ```
 
-## Agent Usage Policy
+Do not use a command-line override as a hidden permanent project policy. Commit intentional policy to `.clang-tidy`.
 
-Preferred flow:
+## Changed-Line Filtering
 
-```text
-implement patch
-   |
-   v
-focused build/test
-   |
-   v
-analyze fast/normal
-   |
-   +--> deterministic findings -> fix or adjudicate
-   |
-   +--> large raw output -> local_ai may summarize/classify
-   |
-   v
-independent review / blind_review when required
+The built-in CLI scopes by changed translation unit, not changed line.
+
+This distinction matters: `clang-tidy-diff.py` analyzes the whole file and filters reported diagnostics to changed lines, so changed-line filtering alone is not a true analysis-cost reduction.
+
+For performance, select fewer translation units. For correctness, expand the scope when headers, templates, shared state, generated code, or build configuration can affect multiple translation units.
+
+## Language Scope
+
+The included `scripts/analyze.py` implementation is intentionally C/C++ focused because it relies on `compile_commands.json` and clang-tidy.
+
+For other languages, preserve the same deterministic principles but use the repository's native tooling, for example:
+
+| Ecosystem | Typical deterministic checks |
+| --- | --- |
+| Python | Ruff, mypy/pyright |
+| TypeScript | `tsc --noEmit`, ESLint |
+| Rust | `cargo clippy`, compiler warnings |
+| Go | `go vet`, configured linters |
+
+Do not install every analyzer into every project template. Add adapters only when the project actually uses that ecosystem and has a defined policy.
+
+## Validation
+
+Run the helper unit tests:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_local_analysis_tools.py' -v
 ```
 
-Static analysis is evidence, not proof. Passing analyzers do not replace tests, source review, specification checks, or blind review for high-risk changes.
+Then validate the actual C/C++ environment:
 
-Do not let `local_ai` suppress deterministic findings. If AI-based triage labels a finding as likely false positive, retain the original finding and evidence until the lead reviewer adjudicates it.
+```bash
+python3 scripts/analyze.py doctor
+python3 scripts/analyze.py --fail-on none fast
+python3 scripts/analyze.py --fail-on none normal
+```
+
+Before using the deep profile as a gate, inspect its first complete result and tune `.clang-tidy`/baseline policy intentionally.
+
+## Recommended Bring-Up Order
+
+```text
+1. install LLVM/clang-tidy
+2. generate compile_commands.json
+3. define/review .clang-tidy
+4. python3 scripts/analyze.py doctor
+5. run fast on a known changed TU
+6. run normal
+7. run deep with --fail-on none
+8. inspect normalized and raw outputs
+9. establish baseline only if required
+10. choose the project fail policy
+```
+
+## Relationship to Repository Indexing
+
+For C/C++:
+
+```text
+                     build/compile_commands.json
+                           /            \
+                          /              \
+                         v                v
+                      clangd          clang-tidy
+                         |                |
+                         v                v
+                 repo_query.py       analyze.py
+```
+
+The two tools are independent at runtime but share the same authoritative compilation database.
+
+`repo_query.py` answers where code is and how symbols are related.
+
+`analyze.py` reports deterministic static-analysis diagnostics.
+
+Neither requires the other to run, except that both benefit from an accurate build configuration.
 
 ## References
 
 - clang-tidy documentation: <https://clang.llvm.org/extra/clang-tidy/>
-- clangd/compile database setup: <https://clangd.llvm.org/installation>
-- See also `17_repo_index_and_query.md`, `15_model_orchestration.md`, `16_blind_review_protocol.md`, and `19_local_agent_interfaces.md`.
+- clangd/compilation database setup: <https://clangd.llvm.org/installation>
+- See also `17_repo_index_and_query.md`.
