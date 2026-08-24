@@ -1,9 +1,3 @@
----
-name: Specification
-title: "spec: "
-about: Define or revise an implementation contract
----
-
 ## Specification
 
 Path: `docs/specs/<spec>.md`
