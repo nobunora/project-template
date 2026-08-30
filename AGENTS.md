@@ -20,6 +20,21 @@ Keep context small and act from evidence.
 - Do not add new dependencies unless the need, maintenance cost, and risk are clear.
 - Report briefly: changed files, reason, checks run, risks, and open questions.
 
+## CodebaseMemory
+
+- Before proposing or implementing a code change, query CodebaseMemory for the target symbol, callers, callees, tests, and dependency boundary. Confirm the index is ready; use targeted source reads and `rg` to verify its findings.
+- Treat `in_degree = 0`, low-confidence `CALLS`, similarity, and semantic relations as investigation leads, never as sufficient evidence for deletion, refactoring, or consolidation.
+- Before deleting a private helper or compatibility wrapper, check direct and dynamic references, imports, monkeypatches, current contracts, tests, and relevant history.
+- Keep source readable: do not rename, wrap, or restructure production code solely to improve graph confidence. Classify resolver mistakes, SDK calls, builtins, test fakes, and intentional dynamic dispatch as graph evidence rather than source defects.
+- When a shared `.codebase-memory/graph.db.zst` artifact is tracked, use it as the initial map. Refresh it once after a source-bearing change; commit the generated artifact last, and never refresh again merely because the artifact commit advanced `HEAD`.
+
+## Quality Audit
+
+- Before tests, run applicable independent checks for lint, architecture/import boundaries, types, dependency use, and JavaScript/TypeScript. Record tool versions, commands, exit status, and diagnostics.
+- Triage every diagnostic against source and tests before editing. Preserve deliberate re-exports, compatibility seams, dynamic imports, SDK boundaries, and test fakes.
+- Run type checkers with the project interpreter. For dependency checks, map distribution names to import names before treating a finding as real (for example `beautifulsoup4`/`bs4` and `scikit-learn`/`sklearn`).
+- Keep confirmed project defects separate from missing-tool/configuration gaps and pre-existing advisory diagnostics. Do not add dependencies, suppress rules, or bulk auto-fix merely to make a tool clean.
+
 ## Read Next
 
 - `docs/00_index.md`

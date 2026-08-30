@@ -40,3 +40,5 @@ Use it as a copy-on-create base when you want a fast, disciplined starting point
 - development playbook for phase-based work
 - refactor and release guardrails
 - milestone and development record format
+- CodebaseMemory evidence and shared-graph rules
+- quality-audit triage rules for lint, types, dependencies, and boundaries
