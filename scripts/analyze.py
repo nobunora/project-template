@@ -75,7 +75,7 @@ def repo_root() -> Path:
 def rel(root: Path, value: str | Path) -> str:
     p = Path(value)
     try:
-        return p.resolve().relative_to(root).as_posix()
+        return p.resolve().relative_to(root.resolve()).as_posix()
     except Exception:
         return p.as_posix()
 
