@@ -47,6 +47,9 @@ Keep context small and act from evidence.
 - If behavior might change, say so explicitly.
 - If a change touches UI state, save flow, workflow orchestration, preview, progress, or entrypoint wiring, read the refactor and release rules before editing.
 - Before creating or modifying a reusable Codex Skill, read `docs/14_skill_creation.md`.
+- For multi-model, delegated-agent, iterative review, or blind-review work, read `docs/15_model_orchestration.md`; if blind independence is required, also read `docs/16_blind_review_protocol.md`.
+- For local repository indexing/query or deterministic static analysis, read `docs/17_repo_index_and_query.md` and `docs/18_static_analysis.md`.
+- For Chat/GitHub specification handoff, repository validation, or specification-to-Codex implementation flow, read `docs/19_chat_github_codex_workflow.md`.
 - Do not parallelize checks that fight with the same watcher, browser, or dev server.
 - If a test or command cannot run, give the exact reason and the command a human should run.
 - Keep generated, cache, build, log, and artifact paths out of normal reads.
