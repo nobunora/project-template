@@ -20,6 +20,26 @@ Keep context small and act from evidence.
 - Do not add new dependencies unless the need, maintenance cost, and risk are clear.
 - Report briefly: changed files, reason, checks run, risks, and open questions.
 
+## Bounded Verification Mode
+
+Use this mode when the task says the design or implementation is already decided or applied and Codex is being used primarily to execute, test, verify, reproduce, measure, or report.
+
+- Treat the supplied implementation and acceptance criteria as the working contract. Do not independently redesign the feature unless verification proves that the contract cannot be satisfied.
+- Start from `git status --short`, `git diff --name-only`, and the relevant `git diff`. Do not begin by rediscovering the repository architecture.
+- Read the task packet, changed files, directly relevant tests, and only the smallest source ranges needed to understand a failure.
+- Default read budget: the task instructions, `AGENTS.md`, changed files, directly relevant tests, plus at most 3 additional source/config files.
+- Do not silently exceed the read budget. If more than 3 additional files appear necessary, stop the investigation, report why broader context is required, list the specific files or symbols needed next, and wait for a narrower follow-up task unless the task explicitly authorizes broader investigation.
+- Prefer `rg`, symbol search, imports, compiler diagnostics, stack traces, and targeted line ranges. Do not open whole directories, unrelated documentation, history, generated files, caches, build outputs, or large logs merely to gain context.
+- Follow evidence outward one hop at a time. A failing test, compiler error, stack trace, direct import, or direct call edge may justify the next read; curiosity alone does not.
+- Run the exact requested commands first. Then run the narrowest relevant tests before broader suites unless the acceptance criteria explicitly require a full suite.
+- For runtime or hardware verification, prioritize execution evidence: exit status, observed behavior, measurements, concise logs, screenshots/artifacts when requested, and reproducible steps.
+- Keep command output small. Quote only diagnostics and log excerpts needed to establish PASS/FAIL or identify the failure.
+- Do not perform opportunistic refactoring, cleanup, dependency upgrades, formatting sweeps, or unrelated fixes during verification.
+- If a failure has an obvious, local, low-risk fix inside the authorized files, a task may explicitly permit that fix. Otherwise diagnose and report; do not expand into an implementation task on your own.
+- After any permitted local fix, rerun the failing check first, then the directly relevant regression checks.
+- If the root cause cannot be established within the read budget, report `INCONCLUSIVE` rather than guessing.
+- Verification reports should contain: overall result (`PASS`, `FAIL`, or `INCONCLUSIVE`), commands/checks run, relevant environment/version facts, observed versus expected behavior, concise failure evidence, files read beyond the changed set, files modified if any, residual risks, and the smallest recommended next action.
+
 ## CodebaseMemory
 
 - Before proposing or implementing a code change, query CodebaseMemory for the target symbol, callers, callees, tests, and dependency boundary. Confirm the index is ready; use targeted source reads and `rg` to verify its findings.
