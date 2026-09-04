@@ -26,11 +26,16 @@ Use this mode when the task says the design or implementation is already decided
 
 - Treat the supplied implementation and acceptance criteria as the working contract. Do not independently redesign the feature unless verification proves that the contract cannot be satisfied.
 - Start from `git status --short`, `git diff --name-only`, and the relevant `git diff`. Do not begin by rediscovering the repository architecture.
+- Before opening unchanged source files, use CodebaseMemory as a routing map for the changed or failing symbols: query the target symbol, direct callers, direct callees, directly associated tests, and the immediate dependency boundary.
+- In verification mode, keep CodebaseMemory exploration bounded to the target symbols plus one graph hop by default. Expand beyond one hop only when a concrete failure, stack trace, compiler diagnostic, direct call/import edge, or acceptance criterion requires it.
+- CodebaseMemory queries do not count against the source-file read budget. Opening raw graph databases, broad graph exports, generated index artifacts, or large query dumps does count as broad context and should not be done merely to gain context.
+- Treat CodebaseMemory as navigation evidence, not source-of-truth evidence. Confirm any relationship that affects PASS/FAIL, root-cause diagnosis, or a code change with targeted source reads, `rg`, tests, or runtime evidence.
+- If the CodebaseMemory index is missing, stale, or unavailable, do not broaden repository exploration to compensate. Fall back to narrow `rg`/symbol search. Do not rebuild or refresh the graph solely for a verification task unless the task explicitly requires it or a permitted source-bearing change makes refresh necessary.
 - Read the task packet, changed files, directly relevant tests, and only the smallest source ranges needed to understand a failure.
 - Default read budget: the task instructions, `AGENTS.md`, changed files, directly relevant tests, plus at most 3 additional source/config files.
 - Do not silently exceed the read budget. If more than 3 additional files appear necessary, stop the investigation, report why broader context is required, list the specific files or symbols needed next, and wait for a narrower follow-up task unless the task explicitly authorizes broader investigation.
-- Prefer `rg`, symbol search, imports, compiler diagnostics, stack traces, and targeted line ranges. Do not open whole directories, unrelated documentation, history, generated files, caches, build outputs, or large logs merely to gain context.
-- Follow evidence outward one hop at a time. A failing test, compiler error, stack trace, direct import, or direct call edge may justify the next read; curiosity alone does not.
+- Prefer CodebaseMemory, `rg`, symbol search, imports, compiler diagnostics, stack traces, and targeted line ranges. Do not open whole directories, unrelated documentation, history, generated files, caches, build outputs, or large logs merely to gain context.
+- Follow evidence outward one hop at a time. A failing test, compiler error, stack trace, direct import, direct call edge, or CodebaseMemory edge confirmed relevant to the failure may justify the next read; curiosity alone does not.
 - Run the exact requested commands first. Then run the narrowest relevant tests before broader suites unless the acceptance criteria explicitly require a full suite.
 - For runtime or hardware verification, prioritize execution evidence: exit status, observed behavior, measurements, concise logs, screenshots/artifacts when requested, and reproducible steps.
 - Keep command output small. Quote only diagnostics and log excerpts needed to establish PASS/FAIL or identify the failure.
@@ -38,12 +43,14 @@ Use this mode when the task says the design or implementation is already decided
 - If a failure has an obvious, local, low-risk fix inside the authorized files, a task may explicitly permit that fix. Otherwise diagnose and report; do not expand into an implementation task on your own.
 - After any permitted local fix, rerun the failing check first, then the directly relevant regression checks.
 - If the root cause cannot be established within the read budget, report `INCONCLUSIVE` rather than guessing.
-- Verification reports should contain: overall result (`PASS`, `FAIL`, or `INCONCLUSIVE`), commands/checks run, relevant environment/version facts, observed versus expected behavior, concise failure evidence, files read beyond the changed set, files modified if any, residual risks, and the smallest recommended next action.
+- Verification reports should contain: overall result (`PASS`, `FAIL`, or `INCONCLUSIVE`), commands/checks run, relevant environment/version facts, observed versus expected behavior, concise failure evidence, CodebaseMemory queries used when relevant, files read beyond the changed set, files modified if any, residual risks, and the smallest recommended next action.
 
 ## CodebaseMemory
 
 - Before proposing or implementing a code change, query CodebaseMemory for the target symbol, callers, callees, tests, and dependency boundary. Confirm the index is ready; use targeted source reads and `rg` to verify its findings.
-- Treat `in_degree = 0`, low-confidence `CALLS`, similarity, and semantic relations as investigation leads, never as sufficient evidence for deletion, refactoring, or consolidation.
+- For bounded verification, use CodebaseMemory before broad source discovery. Prefer small symbol-centered queries and one-hop relationships; do not dump or traverse large graph neighborhoods when a focused query can identify the next file or test.
+- CodebaseMemory is an acceleration and routing layer, not an authority. The source tree, tests, build diagnostics, and runtime behavior remain authoritative.
+- Treat `in_degree = 0`, low-confidence `CALLS`, similarity, and semantic relations as investigation leads, never as sufficient evidence for deletion, refactoring, consolidation, PASS/FAIL, or root-cause claims.
 - Before deleting a private helper or compatibility wrapper, check direct and dynamic references, imports, monkeypatches, current contracts, tests, and relevant history.
 - Keep source readable: do not rename, wrap, or restructure production code solely to improve graph confidence. Classify resolver mistakes, SDK calls, builtins, test fakes, and intentional dynamic dispatch as graph evidence rather than source defects.
 - When a shared `.codebase-memory/graph.db.zst` artifact is tracked, use it as the initial map. Refresh it once after a source-bearing change; commit the generated artifact last, and never refresh again merely because the artifact commit advanced `HEAD`.
